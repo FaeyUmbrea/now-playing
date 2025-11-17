@@ -82,15 +82,18 @@ jobs:
           ./build-scripts/build-macos.sh
 
       - name: Check for macOS signing secrets
+        id: check-macos-signing
         run: |
           if [ -n "${{ secrets.MAC_P12_BASE64 }}" ] && [ -n "${{ secrets.MAC_P12_PASSWORD }}" ] && [ -n "${{ secrets.MAC_CODESIGN_IDENTITY }}" ]; then
             echo "macOS signing secrets present — codesign step will run."
+            echo "signing=true" >> $GITHUB_OUTPUT
           else
             echo "macOS signing secrets NOT present — skipping codesign step. Add MAC_P12_BASE64, MAC_P12_PASSWORD, MAC_CODESIGN_IDENTITY to enable signing." >&2
+            echo "signing=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Code sign the app (optional)
-        if: ${{ secrets.MAC_P12_BASE64 && secrets.MAC_P12_PASSWORD && secrets.MAC_CODESIGN_IDENTITY }}
+        if: ${{ steps.check-macos-signing.outputs.signing == 'true' }}
         run: |
           echo "Decoding P12 and importing into keychain"
           echo "$MAC_P12_BASE64" | base64 --decode > /tmp/codesign.p12
@@ -110,11 +113,14 @@ jobs:
           MAC_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
 
       - name: Check for notarization secrets
+        id: check-notarization
         run: |
           if [ -n "${{ secrets.APPLE_NOTARY_API_KEY }}" ] && [ -n "${{ secrets.APPLE_NOTARY_API_ISSUER }}" ] && [ -n "${{ secrets.APPLE_NOTARY_KEY_ID }}" ]; then
             echo "Notary API secrets present — notarization step will run."
+            echo "notarize=true" >> $GITHUB_OUTPUT
           else
             echo "Notary API secrets NOT present — skipping notarization. Add APPLE_NOTARY_API_KEY, APPLE_NOTARY_API_ISSUER, APPLE_NOTARY_KEY_ID to enable notarization." >&2
+            echo "notarize=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create DMG or tarball
@@ -143,7 +149,7 @@ jobs:
           fi
 
       - name: Notarize app (optional)
-        if: ${{ secrets.APPLE_NOTARY_API_KEY && secrets.APPLE_NOTARY_API_ISSUER }}
+        if: ${{ steps.check-notarization.outputs.notarize == 'true' }}
         run: |
           TAG=${{ github.event.release.tag_name }}
           DMG_PATH="dist/now-playing-mac-${TAG}.dmg"
