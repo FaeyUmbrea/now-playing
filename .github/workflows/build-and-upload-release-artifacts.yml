@@ -248,54 +248,8 @@ jobs:
       - name: Create MSI with WiX (PowerShell)
         shell: pwsh
         run: |
-          $tag = "${{ github.event.release.tag_name }}"
-          Write-Host "Installing WiX Toolset via Chocolatey (may already be present)"
-          choco install -y wixtoolset || Write-Host "choco install wixtoolset failed or WiX already present"
-          $distDir = Join-Path $PSScriptRoot 'dist'
-          if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir | Out-Null }
-          $windowsDir = Join-Path $PSScriptRoot 'windows'
-          # Find the first exe in the windows dir to package
-          $exe = Get-ChildItem -Path $windowsDir -Filter *.exe | Select-Object -First 1
-          if ($null -eq $exe) { Write-Host "No executable found in windows/ to package; skipping MSI creation"; exit 0 }
-          $productGuid = [guid]::NewGuid().ToString()
-          $componentGuid = [guid]::NewGuid().ToString()
-          $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
-          $wxs = @"
-<?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Now Playing" Language="1033" Version="$version" Manufacturer="Now Playing" UpgradeCode="$productGuid">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
-    <MediaTemplate />
-    <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
-        <Directory Id="INSTALLFOLDER" Name="Now Playing" />
-      </Directory>
-    </Directory>
-    <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="MainExecutable" Guid="$componentGuid">
-        <File Source="windows\$($exe.Name)" KeyPath="yes" />
-      </Component>
-    </DirectoryRef>
-    <Feature Id="DefaultFeature" Level="1">
-      <ComponentRef Id="MainExecutable" />
-    </Feature>
-  </Product>
-</Wix>
-"@
-          $wxsPath = Join-Path $PSScriptRoot 'product.wxs'
-          $wxs | Out-File -FilePath $wxsPath -Encoding utf8
-          # Paths to WiX executables (typical install path)
-          $candle = 'C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe'
-          $light = 'C:\Program Files (x86)\WiX Toolset v3.11\bin\light.exe'
-          if (Test-Path $candle -and Test-Path $light) {
-            Push-Location $PSScriptRoot
-            & $candle -out product.wixobj product.wxs
-            & $light -out "now-playing-$tag.msi" product.wixobj
-            if (Test-Path "now-playing-$tag.msi") { Move-Item -Path "now-playing-$tag.msi" -Destination $distDir -Force }
-            Pop-Location
-          } else {
-            Write-Host "WiX tools not found at expected path: $candle and $light; MSI not created"
-          }
+          # Run the helper script to create the MSI. Provide tag via arg.
+          pwsh -NoProfile -NonInteractive -File build-scripts/create-windows-msi.ps1 -Tag "${{ github.event.release.tag_name }}"
 
       - name: Determine Windows artifacts
         id: win-artifacts
