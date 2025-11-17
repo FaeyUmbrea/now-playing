@@ -35,7 +35,7 @@ jobs:
         run: |
           git fetch --tags
           # Attempt to use git-cliff to generate human-friendly changelog for the new tag
-          git-cliff --tag "${{ github.ref_name }}" --no-emoji --output changelog.md || true
+          git-cliff --tag "${{ github.ref_name }}" --output changelog.md || true
           # Fallback to a simple git log if git-cliff didn't produce output
           if [ ! -s changelog.md ]; then
             git log -n 50 --pretty=format:'* %s (%h)' "${{ github.ref_name }}" > changelog.md || true
