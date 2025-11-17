@@ -22,8 +22,13 @@ jobs:
 
       - name: Install git-cliff
         run: |
-          # Install a pinned version of git-cliff for stable changelog generation
-          cargo install git-cliff --locked --version 0.11.0
+          # Attempt to install a pinned version of git-cliff for stable changelog generation.
+          # If the exact pinned version is not found in crates.io, fall back to installing the latest available.
+          cargo install git-cliff --locked --version 2.10.1 || true
+          if ! command -v git-cliff >/dev/null 2>&1; then
+            echo "Pinned git-cliff install failed or binary not found; installing latest available git-cliff"
+            cargo install git-cliff --locked || true
+          fi
 
       - name: Generate changelog
         id: gen-changelog
