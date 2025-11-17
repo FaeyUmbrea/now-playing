@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <title>Now Playing</title>
+</head>
+<body>
+<div id='template-root'></div>
+<script>
+const template = `{{TEMPLATE}}`;
+document.getElementById('template-root').innerHTML = template;
+
+function formatTime(seconds) {
+    if (!seconds || seconds < 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+let previousTrackId = null;
+let isPlaying = false;
+let duration = 0;
+let sseProgress = 0;
+let sseReceivedTime = 0;
+let animatedProgress = 0;
+let animationFrameRate = 30;
+let animationInterval = 1000 / animationFrameRate;
+let animationPaused = false;
+
+function updateWidget(data) {
+    if (!data) return;
+    // Track change detection
+    const trackId = `${data.title || ''}|${data.artist || ''}|${data.album || ''}`;
+    if (trackId !== previousTrackId) {
+        sseProgress = data.position_seconds || 0;
+        duration = data.duration_seconds || 0;
+        previousTrackId = trackId;
+        animatedProgress = sseProgress;
+    } else {
+        // Only update duration if it changes
+        if (duration !== (data.duration_seconds || 0)) {
+            duration = data.duration_seconds || 0;
+        }
+        // If SSE progress is ahead of animation, catch up
+        if ((data.position_seconds || 0) > animatedProgress) {
+            sseProgress = data.position_seconds || 0;
+            animatedProgress = sseProgress;
+        }
+    }
+    sseProgress = data.position_seconds || 0;
+    sseReceivedTime = Date.now() / 1000;
+    isPlaying = data.is_playing;
+    // Update text fields
+    const titleEl = document.querySelector('.track-title');
+    if (titleEl) titleEl.textContent = data.title || '';
+    const artistEl = document.querySelector('.track-artist');
+    if (artistEl) artistEl.textContent = data.artist || '';
+    const albumEl = document.querySelector('.track-album');
+    if (albumEl) albumEl.textContent = data.album || '';
+    // Update album art and container
+    const artImg = document.getElementById('artwork-img');
+    const artBg = document.querySelector('.album-art-bg');
+    if (data.artwork_base64) {
+        if (artImg) {
+            artImg.src = data.artwork_base64;
+            artImg.classList.remove('hidden');
+        }
+        if (artBg) artBg.classList.remove('hidden');
+    } else {
+        if (artImg) artImg.classList.add('hidden');
+        if (artBg) artBg.classList.add('hidden');
+    }
+    // Progress bar
+    updateProgressBar();
+    // Timestamp
+    updateTimestamp();
+
+    if (animatedProgress <= sseProgress + 1) {
+        animationPaused = false;
+    }
+}
+
+function updateProgressBar() {
+    const bar = document.querySelector('.progress-bar');
+    if (!bar) return;
+    let percent = duration > 0 ? (animatedProgress / duration) * 100 : 0;
+    bar.style.width = percent + '%';
+}
+
+function updateTimestamp() {
+    const timeEl = document.getElementById('current-time');
+    if (timeEl) timeEl.textContent = formatTime(animatedProgress);
+    const durationEl = document.querySelector('.progress-duration');
+    if (durationEl) durationEl.textContent = formatTime(duration);
+}
+
+function tick() {
+    if (isPlaying && duration > 0 && animatedProgress < duration && !animationPaused) {
+        animatedProgress += 1 / animationFrameRate;
+        if (animatedProgress > duration) animatedProgress = duration;
+        // If animation is more than 1s ahead of SSE, pause
+        if (animatedProgress > sseProgress + 1) {
+            animationPaused = true;
+        }
+        updateProgressBar();
+        updateTimestamp();
+    }
+    setTimeout(tick, animationInterval);
+}
+
+tick();
+
+// Connect to SSE for live updates
+const evtSource = new EventSource('/events');
+evtSource.onmessage = function(event) {
+    try {
+        const data = JSON.parse(event.data);
+        // debug: log the incoming data so we can confirm what's being sent
+        console.log('SSE message', data);
+        updateWidget(data);
+    } catch (e) {
+        // ignore
+    }
+};
+</script>
+</body>
+</html>

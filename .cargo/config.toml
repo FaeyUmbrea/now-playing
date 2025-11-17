@@ -1,0 +1,10 @@
+# Cargo configuration for OBS plugin development
+
+[target.aarch64-apple-darwin]
+# Allow undefined symbols - OBS provides them at runtime via dynamic lookup
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.x86_64-apple-darwin]
+# Allow undefined symbols - OBS provides them at runtime via dynamic lookup
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+

@@ -1,0 +1,13 @@
+
+# git-cliff configuration - minimal sensible defaults
+# See https://github.com/orhun/git-cliff for options
+
+[parse]
+merge_pattern = "^Merge pull request" # ignore merge commits
+
+[transform]
+# Keep default transforms
+
+[format]
+# Simple markdown changelog
+template = "\n{{#each sections}}\n### {{this.title}}\n{{#each this.items}}- {{this.desc}} ({{this.author}})\n{{/each}}\n{{/each}}\n"

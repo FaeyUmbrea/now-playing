@@ -1,0 +1,330 @@
+name: Build and Upload Release Artifacts
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Build Linux release
+        run: |
+          chmod +x build-scripts/build-linux.sh
+          ./build-scripts/build-linux.sh
+      - name: Create Linux tarball
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          mkdir -p dist
+          tar -C dist -czf dist/now-playing-linux-${TAG}.tar.gz linux
+      - name: Linux smoke test
+        run: |
+          # Run the built binary and capture version/help output
+          if [ -x target/release/now-playing ]; then
+            target/release/now-playing --version > dist/smoke-linux.txt 2>&1 || target/release/now-playing --help > dist/smoke-linux.txt 2>&1 || echo 'no output' > dist/smoke-linux.txt
+          else
+            echo 'binary not found or not executable' > dist/smoke-linux.txt
+          fi
+      - name: Upload Linux smoke test log
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-smoke-log-${{ github.event.release.tag_name }}
+          path: dist/smoke-linux.txt
+      - name: Upload Linux artifact
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: dist/now-playing-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: now-playing-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_content_type: application/gzip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Make macOS build script executable
+        run: chmod +x build-scripts/build-macos.sh
+      - name: Build macOS .app bundle
+        run: |
+          ./build-scripts/build-macos.sh
+
+      - name: Check for macOS signing secrets
+        run: |
+          if [ -n "${{ secrets.MAC_P12_BASE64 }}" ] && [ -n "${{ secrets.MAC_P12_PASSWORD }}" ] && [ -n "${{ secrets.MAC_CODESIGN_IDENTITY }}" ]; then
+            echo "macOS signing secrets present — codesign step will run."
+          else
+            echo "macOS signing secrets NOT present — skipping codesign step. Add MAC_P12_BASE64, MAC_P12_PASSWORD, MAC_CODESIGN_IDENTITY to enable signing." >&2
+          fi
+
+      - name: Code sign the app (optional)
+        if: ${{ secrets.MAC_P12_BASE64 && secrets.MAC_P12_PASSWORD && secrets.MAC_CODESIGN_IDENTITY }}
+        run: |
+          echo "Decoding P12 and importing into keychain"
+          echo "$MAC_P12_BASE64" | base64 --decode > /tmp/codesign.p12
+          security create-keychain -p actions build.keychain
+          security import /tmp/codesign.p12 -k ~/Library/Keychains/build.keychain -P "$MAC_P12_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -s ~/Library/Keychains/build.keychain
+          security default-keychain -s ~/Library/Keychains/build.keychain
+          security unlock-keychain -p actions ~/Library/Keychains/build.keychain
+          security set-keychain-settings -t 3600 -u ~/Library/Keychains/build.keychain
+          # Sign executable and bundle
+          codesign --force --options runtime --sign "$MAC_CODESIGN_IDENTITY" "Now Playing.app/Contents/MacOS/Now Playing"
+          codesign --force --options runtime --sign "$MAC_CODESIGN_IDENTITY" --entitlements build-scripts/Entitlements.plist "Now Playing.app"
+          codesign --verify --deep --strict --verbose=2 "Now Playing.app"
+        env:
+          MAC_P12_BASE64: ${{ secrets.MAC_P12_BASE64 }}
+          MAC_P12_PASSWORD: ${{ secrets.MAC_P12_PASSWORD }}
+          MAC_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
+
+      - name: Check for notarization secrets
+        run: |
+          if [ -n "${{ secrets.APPLE_NOTARY_API_KEY }}" ] && [ -n "${{ secrets.APPLE_NOTARY_API_ISSUER }}" ] && [ -n "${{ secrets.APPLE_NOTARY_KEY_ID }}" ]; then
+            echo "Notary API secrets present — notarization step will run."
+          else
+            echo "Notary API secrets NOT present — skipping notarization. Add APPLE_NOTARY_API_KEY, APPLE_NOTARY_API_ISSUER, APPLE_NOTARY_KEY_ID to enable notarization." >&2
+          fi
+
+      - name: Create DMG or tarball
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          mkdir -p dist/mac
+          APP_BUNDLE="Now Playing.app"
+          DMG_PATH="dist/now-playing-mac-${TAG}.dmg"
+          TAR_PATH="dist/now-playing-mac-${TAG}.tar.gz"
+          if [ -d "$APP_BUNDLE" ]; then
+            set -e
+            if command -v hdiutil >/dev/null 2>&1; then
+              STAGING_DIR="dist/staging-${TAG}"
+              rm -rf "$STAGING_DIR"
+              mkdir -p "$STAGING_DIR"
+              cp -R "$APP_BUNDLE" "$STAGING_DIR/"
+              hdiutil create -volname "Now Playing" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+              rm -rf "$STAGING_DIR"
+            fi
+            if [ ! -f "$DMG_PATH" ]; then
+              tar -czf "$TAR_PATH" "$APP_BUNDLE"
+            fi
+          else
+            echo "App bundle not found"
+            exit 1
+          fi
+
+      - name: Notarize app (optional)
+        if: ${{ secrets.APPLE_NOTARY_API_KEY && secrets.APPLE_NOTARY_API_ISSUER }}
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          DMG_PATH="dist/now-playing-mac-${TAG}.dmg"
+          if [ ! -f "$DMG_PATH" ]; then
+            echo "No DMG to notarize"
+            exit 0
+          fi
+          # Configure API key
+          echo "$APPLE_NOTARY_API_KEY" | base64 --decode > /tmp/authkey.p8
+          # Try notarization via notarytool (requires Xcode command line tools)
+          xcrun notarytool submit "$DMG_PATH" --key /tmp/authkey.p8 --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_API_ISSUER" --wait || true
+          xcrun stapler staple "$DMG_PATH" || true
+        env:
+          APPLE_NOTARY_API_KEY: ${{ secrets.APPLE_NOTARY_API_KEY }}
+          APPLE_NOTARY_API_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+
+      - name: Upload macOS artifact (dmg or tar)
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          DMG_PATH="dist/now-playing-mac-${TAG}.dmg"
+          TAR_PATH="dist/now-playing-mac-${TAG}.tar.gz"
+          if [ -f "$DMG_PATH" ]; then
+            echo "asset=$DMG_PATH" >> $GITHUB_OUTPUT
+            echo "asset_name=$(basename $DMG_PATH)" >> $GITHUB_OUTPUT
+          else
+            echo "asset=$TAR_PATH" >> $GITHUB_OUTPUT
+            echo "asset_name=$(basename $TAR_PATH)" >> $GITHUB_OUTPUT
+          fi
+        id: choose-mac-asset
+      - name: macOS smoke test
+        run: |
+          # Try to run the app binary with --version or write a check file
+          BIN="Now Playing.app/Contents/MacOS/Now Playing"
+          if [ -x "$BIN" ]; then
+            "$BIN" --version > dist/smoke-macos.txt 2>&1 || echo 'app ran (no --version)' > dist/smoke-macos.txt
+          else
+            echo 'binary not found or not executable' > dist/smoke-macos.txt
+          fi
+      - name: Upload macOS smoke test log
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-smoke-log-${{ github.event.release.tag_name }}
+          path: dist/smoke-macos.txt
+      - name: Upload macOS asset to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.choose-mac-asset.outputs.asset }}
+          asset_name: ${{ steps.choose-mac-asset.outputs.asset_name }}
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - name: Make windows build script executable
+        run: |
+          chmod +x build-scripts/build-windows.sh
+      - name: Build Windows release
+        shell: bash
+        run: |
+          ./build-scripts/build-windows.sh
+      - name: Create Windows zip
+        shell: bash
+        run: |
+          TAG=${{ github.event.release.tag_name }}
+          mkdir -p dist
+          cd dist
+          zip -r now-playing-windows-${TAG}.zip windows
+      - name: Windows smoke test
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path windows -Filter *.exe | Select-Object -First 1
+          if ($null -ne $exe) {
+            $out = & "windows\$($exe.Name)" --version 2>&1
+            $out | Out-File -FilePath dist\smoke-windows.txt -Encoding UTF8
+          } else { "exe not found" | Out-File -FilePath dist\smoke-windows.txt -Encoding UTF8 }
+      - name: Upload Windows smoke test log
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-log-${{ github.event.release.tag_name }}
+          path: dist/smoke-windows.txt
+
+      - name: Create MSI with WiX (PowerShell)
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          Write-Host "Installing WiX Toolset via Chocolatey (may already be present)"
+          choco install -y wixtoolset || Write-Host "choco install wixtoolset failed or WiX already present"
+          $distDir = Join-Path $PSScriptRoot 'dist'
+          if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir | Out-Null }
+          $windowsDir = Join-Path $PSScriptRoot 'windows'
+          # Find the first exe in the windows dir to package
+          $exe = Get-ChildItem -Path $windowsDir -Filter *.exe | Select-Object -First 1
+          if ($null -eq $exe) { Write-Host "No executable found in windows/ to package; skipping MSI creation"; exit 0 }
+          $productGuid = [guid]::NewGuid().ToString()
+          $componentGuid = [guid]::NewGuid().ToString()
+          $version = '${{ github.event.release.tag_name }}'.TrimStart('v')
+          $wxs = @"
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Now Playing" Language="1033" Version="$version" Manufacturer="Now Playing" UpgradeCode="$productGuid">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MediaTemplate />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="Now Playing" />
+      </Directory>
+    </Directory>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="$componentGuid">
+        <File Source="windows\$($exe.Name)" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <Feature Id="DefaultFeature" Level="1">
+      <ComponentRef Id="MainExecutable" />
+    </Feature>
+  </Product>
+</Wix>
+"@
+          $wxsPath = Join-Path $PSScriptRoot 'product.wxs'
+          $wxs | Out-File -FilePath $wxsPath -Encoding utf8
+          # Paths to WiX executables (typical install path)
+          $candle = 'C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe'
+          $light = 'C:\Program Files (x86)\WiX Toolset v3.11\bin\light.exe'
+          if (Test-Path $candle -and Test-Path $light) {
+            Push-Location $PSScriptRoot
+            & $candle -out product.wixobj product.wxs
+            & $light -out "now-playing-$tag.msi" product.wixobj
+            if (Test-Path "now-playing-$tag.msi") { Move-Item -Path "now-playing-$tag.msi" -Destination $distDir -Force }
+            Pop-Location
+          } else {
+            Write-Host "WiX tools not found at expected path: $candle and $light; MSI not created"
+          }
+
+      - name: Determine Windows artifacts
+        id: win-artifacts
+        shell: pwsh
+        run: |
+          $tag = "${{ github.event.release.tag_name }}"
+          $zip = Join-Path $PSScriptRoot "dist\now-playing-windows-$tag.zip"
+          $msi = Join-Path $PSScriptRoot "dist\now-playing-$tag.msi"
+          if (Test-Path $zip) { Write-Output "zip=$zip" >> $env:GITHUB_OUTPUT }
+          if (Test-Path $msi) { Write-Output "msi=$msi" >> $env:GITHUB_OUTPUT }
+
+      - name: Upload Windows zip
+        if: ${{ steps.win-artifacts.outputs.zip }}
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.win-artifacts.outputs.zip }}
+          asset_name: now-playing-windows-${{ github.event.release.tag_name }}.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows MSI
+        if: ${{ steps.win-artifacts.outputs.msi }}
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ steps.win-artifacts.outputs.msi }}
+          asset_name: now-playing-windows-${{ github.event.release.tag_name }}.msi
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

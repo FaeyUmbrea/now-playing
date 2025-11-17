@@ -1,0 +1,41 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OBS Plugin Build Artifacts
+*.dylib
+*.so
+*.dll
+*.plugin/
+
+# Build outputs
+/NowPlaying.plugin/
+Now Playing.app/
+dist/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Don't ignore the OBS submodule itself
+!vendor/
+
