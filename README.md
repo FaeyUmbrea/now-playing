@@ -31,38 +31,13 @@ The application will launch a GUI where you can:
 4. Customize the HTML widget template
 5. Start the monitoring and web server
 
-### Creating Distribution Packages
-
-#### All Platforms (Interactive)
+### Building from Source
 ```sh
-./build-scripts/build-all.sh
+cargo build --release
 ```
+The binary is written to `target/release/now-playing`.
 
-#### Platform-Specific
-
-**macOS:**
-```sh
-./build-scripts/build-macos.sh
-```
-Creates `Now Playing.app` bundle with code signing support.
-
-**Linux:**
-```sh
-./build-scripts/build-linux.sh
-```
-Creates distribution package in `dist/linux/` with installer.
-
-**Windows:**
-```powershell
-# On Windows
-.\build-scripts\build-windows.ps1
-
-# Or cross-compile from macOS/Linux
-./build-scripts/build-windows.sh
-```
-Creates distribution package in `dist/windows/`.
-
-See [build-scripts/README.md](build-scripts/README.md) for detailed build documentation.
+Release binaries for Linux, macOS, and Windows are built and attached automatically by CI when a release is published (see `.github/workflows/`).
 
 ## Music Service Configuration
 
