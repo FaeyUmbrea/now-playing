@@ -1,15 +1,18 @@
 // filepath: src/spotify.rs
 
 use crate::music_service::TrackInfo;
+use crate::rt::RUNTIME;
 use oauth2::basic::BasicClient;
-use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, TokenUrl, Scope, AuthorizationCode, CsrfToken, TokenResponse};
 use oauth2::reqwest::async_http_client;
+use oauth2::{
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope,
+    TokenResponse, TokenUrl,
+};
 use reqwest::Client as HttpClient;
 use serde::Deserialize;
+use tiny_http::{Response, Server};
 use tokio::sync::watch;
-use crate::rt::RUNTIME;
 use url::form_urlencoded;
-use tiny_http::{Server, Response};
 
 #[derive(Clone)]
 pub struct SpotifyMonitor {
@@ -66,7 +69,9 @@ impl SpotifyMonitor {
 
             // Parse the query string
             let query = req.url().split('?').nth(1).unwrap_or("");
-            let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes()).into_owned().collect();
+            let params: Vec<(String, String)> = form_urlencoded::parse(query.as_bytes())
+                .into_owned()
+                .collect();
             let mut code_opt: Option<String> = None;
             for (k, v) in params {
                 if k == "code" {
@@ -85,11 +90,15 @@ impl SpotifyMonitor {
             let code = code_opt.unwrap();
 
             // Respond to the browser so the user sees a confirmation page
-            let response = Response::from_string("Authorization complete - you may close this window.");
+            let response =
+                Response::from_string("Authorization complete - you may close this window.");
             let _ = req.respond(response);
 
             // Exchange code for a token
-            let token_res = client.exchange_code(AuthorizationCode::new(code)).request_async(async_http_client).await;
+            let token_res = client
+                .exchange_code(AuthorizationCode::new(code))
+                .request_async(async_http_client)
+                .await;
             let token = match token_res {
                 Ok(t) => t,
                 Err(e) => {
@@ -115,9 +124,16 @@ impl SpotifyMonitor {
                             if let Ok(sp) = serde_json::from_str::<SpotifyCurrentlyPlaying>(&body) {
                                 let track = TrackInfo {
                                     title: sp.item.name.unwrap_or_default(),
-                                    artist: sp.item.artists.iter().map(|a| a.name.clone()).collect::<Vec<_>>().join(", "),
+                                    artist: sp
+                                        .item
+                                        .artists
+                                        .iter()
+                                        .map(|a| a.name.clone())
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
                                     album: sp.item.album.name.unwrap_or_default(),
-                                    duration_seconds: (sp.item.duration_ms.unwrap_or(0) / 1000) as u32,
+                                    duration_seconds: (sp.item.duration_ms.unwrap_or(0) / 1000)
+                                        as u32,
                                     position_seconds: (sp.progress_ms.unwrap_or(0) / 1000) as u32,
                                     is_playing: sp.is_playing.unwrap_or(false),
                                     artwork_base64: None,
@@ -168,4 +184,3 @@ struct SpotifyAlbum {
 struct SpotifyArtist {
     pub name: String,
 }
-

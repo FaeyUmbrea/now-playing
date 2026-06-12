@@ -1,14 +1,14 @@
-use crate::template::TemplateEngine;
+use crate::config::WidgetConfig;
 use crate::rt::RUNTIME;
+use crate::template::TemplateEngine;
 use crate::TrackInfo;
+use parking_lot::RwLock;
 use std::net::TcpListener;
 use std::sync::Arc;
-use parking_lot::RwLock;
-use warp::Filter;
-use tracing::info;
-use tokio_stream::wrappers::TcpListenerStream;
 use tokio::sync::watch;
-use crate::config::WidgetConfig;
+use tokio_stream::wrappers::TcpListenerStream;
+use tracing::info;
+use warp::Filter;
 
 pub struct WebServer {
     pub host: String,
@@ -17,15 +17,25 @@ pub struct WebServer {
 }
 
 impl WebServer {
-    pub fn new(host: String, preferred_port: u16, receiver: watch::Receiver<TrackInfo>, widget_config: WidgetConfig) -> Result<Self, String> {
+    pub fn new(
+        host: String,
+        preferred_port: u16,
+        receiver: watch::Receiver<TrackInfo>,
+        widget_config: WidgetConfig,
+    ) -> Result<Self, String> {
         let port_result = (0..100).find_map(|offset| {
             let p = preferred_port + offset;
             TcpListener::bind((host.as_str(), p)).ok().map(|l| (p, l))
         });
 
-        let (chosen_port, listener) = port_result
-            .ok_or_else(|| format!("Unable to bind to {}:{}-{}",
-                                    host, preferred_port, preferred_port + 99))?;
+        let (chosen_port, listener) = port_result.ok_or_else(|| {
+            format!(
+                "Unable to bind to {}:{}-{}",
+                host,
+                preferred_port,
+                preferred_port + 99
+            )
+        })?;
 
         listener.set_nonblocking(true).map_err(|e| e.to_string())?;
 
@@ -126,6 +136,5 @@ impl WebServer {
 }
 
 impl Drop for WebServer {
-    fn drop(&mut self) {
-    }
+    fn drop(&mut self) {}
 }

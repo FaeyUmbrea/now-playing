@@ -1,7 +1,7 @@
 // Unified music service abstraction
+use crate::rt::RUNTIME;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-use crate::rt::RUNTIME;
 
 #[cfg(target_os = "macos")]
 use crate::apple_music::AppleMusicMonitor;
@@ -99,7 +99,11 @@ impl MusicService {
                             artwork_base64: apple_track.artwork_base64.clone(),
                         };
                         let sent = tx.send(track.clone()).is_ok();
-                        tracing::info!("AppleMusic forwarder forwarded: sent={}, track={:?}", sent, track);
+                        tracing::info!(
+                            "AppleMusic forwarder forwarded: sent={}, track={:?}",
+                            sent,
+                            track
+                        );
                     }
                 });
 

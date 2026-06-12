@@ -1,11 +1,11 @@
-use now_playing::{MusicService, WebServer, Config, ObsClient, MusicServiceType, SpotifyMonitor};
-use now_playing::rt::RUNTIME;
 use eframe::egui;
-use std::sync::Arc;
-use parking_lot::RwLock as SyncRwLock;
-use tokio::sync::RwLock as AsyncRwLock;
+use now_playing::rt::RUNTIME;
 use now_playing::TemplateMode;
+use now_playing::{Config, MusicService, MusicServiceType, ObsClient, SpotifyMonitor, WebServer};
+use parking_lot::RwLock as SyncRwLock;
 use rfd::FileDialog;
+use std::sync::Arc;
+use tokio::sync::RwLock as AsyncRwLock;
 
 fn main() -> Result<(), eframe::Error> {
     tracing_subscriber::fmt::init();
@@ -70,7 +70,11 @@ impl NowPlayingApp {
             MusicServiceType::Cider => MusicService::new_cider(),
             MusicServiceType::Spotify => {
                 if let Some(spotify_cfg) = &self.config.service.spotify {
-                    MusicService::Spotify(SpotifyMonitor::new(&spotify_cfg.client_id, &spotify_cfg.client_secret, &spotify_cfg.redirect_uri))
+                    MusicService::Spotify(SpotifyMonitor::new(
+                        &spotify_cfg.client_id,
+                        &spotify_cfg.client_secret,
+                        &spotify_cfg.redirect_uri,
+                    ))
                 } else {
                     self.status_message = "Spotify not configured".to_string();
                     return;
@@ -96,7 +100,11 @@ impl NowPlayingApp {
                 // requires explicit credentials and a different start API, so call it directly.
                 if let Some(s) = &self.config.service.spotify {
                     if let MusicService::Spotify(m) = &service {
-                        m.start_monitoring(s.client_id.clone(), s.client_secret.clone(), s.redirect_uri.clone());
+                        m.start_monitoring(
+                            s.client_id.clone(),
+                            s.client_secret.clone(),
+                            s.redirect_uri.clone(),
+                        );
                     }
                 }
             }
@@ -133,14 +141,16 @@ impl NowPlayingApp {
         self.obs_status_rx = Some(rx);
         RUNTIME.spawn(async move {
             let mut client = obs_client.write().await;
-            let result = client.connect_with_warnings(|_| {
-                // You can push to warnings here if you want UI feedback
-            }).await;
+            let result = client
+                .connect_with_warnings(|_| {
+                    // You can push to warnings here if you want UI feedback
+                })
+                .await;
             match result {
                 Ok(_) => {
                     tracing::info!("Connected to OBS successfully");
                     let _ = tx.send("Connected to OBS".to_string());
-                },
+                }
                 Err(e) => {
                     tracing::error!("Failed to connect to OBS: {}", e);
                     let _ = tx.send(format!("Failed: {}", e));
@@ -258,13 +268,11 @@ impl eframe::App for NowPlayingApp {
             ui.add_space(8.0);
 
             // Tab content
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                match self.selected_tab {
-                    Tab::MusicService => self.render_music_service_tab(ui),
-                    Tab::Server => self.render_server_tab(ui),
-                    Tab::Obs => self.render_obs_tab(ui),
-                    Tab::Widget => self.render_widget_tab(ui),
-                }
+            egui::ScrollArea::vertical().show(ui, |ui| match self.selected_tab {
+                Tab::MusicService => self.render_music_service_tab(ui),
+                Tab::Server => self.render_server_tab(ui),
+                Tab::Obs => self.render_obs_tab(ui),
+                Tab::Widget => self.render_widget_tab(ui),
             });
         });
 
@@ -287,10 +295,22 @@ impl NowPlayingApp {
         ui.add_space(4.0);
 
         #[cfg(target_os = "macos")]
-        ui.radio_value(&mut self.config.service.service_type, MusicServiceType::AppleMusic, "Apple Music (macOS)");
+        ui.radio_value(
+            &mut self.config.service.service_type,
+            MusicServiceType::AppleMusic,
+            "Apple Music (macOS)",
+        );
 
-        ui.radio_value(&mut self.config.service.service_type, MusicServiceType::Cider, "Cider");
-        ui.radio_value(&mut self.config.service.service_type, MusicServiceType::Spotify, "Spotify");
+        ui.radio_value(
+            &mut self.config.service.service_type,
+            MusicServiceType::Cider,
+            "Cider",
+        );
+        ui.radio_value(
+            &mut self.config.service.service_type,
+            MusicServiceType::Spotify,
+            "Spotify",
+        );
 
         ui.add_space(16.0);
         ui.separator();
@@ -301,7 +321,9 @@ impl NowPlayingApp {
             MusicServiceType::AppleMusic => {
                 ui.heading("Apple Music");
                 ui.add_space(4.0);
-                ui.label("Apple Music integration uses AppleScript to monitor your music playback.");
+                ui.label(
+                    "Apple Music integration uses AppleScript to monitor your music playback.",
+                );
                 ui.label("No additional configuration required.");
             }
             MusicServiceType::Cider => {
@@ -320,7 +342,11 @@ impl NowPlayingApp {
                         ui.end_row();
 
                         ui.label("Port:");
-                        ui.add(egui::DragValue::new(&mut self.config.service.cider.port).speed(1).range(1024..=65535));
+                        ui.add(
+                            egui::DragValue::new(&mut self.config.service.cider.port)
+                                .speed(1)
+                                .range(1024..=65535),
+                        );
                         ui.end_row();
                     });
 
@@ -345,7 +371,10 @@ impl NowPlayingApp {
                             ui.end_row();
 
                             ui.label("Client Secret:");
-                            ui.add(egui::TextEdit::singleline(&mut spotify_cfg.client_secret).password(true));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut spotify_cfg.client_secret)
+                                    .password(true),
+                            );
                             ui.end_row();
 
                             ui.label("Redirect URI:");
@@ -376,18 +405,31 @@ impl NowPlayingApp {
                 ui.end_row();
 
                 ui.label("Port:");
-                ui.add(egui::DragValue::new(&mut self.config.server.port).speed(1).range(1024..=65535));
+                ui.add(
+                    egui::DragValue::new(&mut self.config.server.port)
+                        .speed(1)
+                        .range(1024..=65535),
+                );
                 ui.end_row();
             });
 
         ui.add_space(8.0);
-        ui.label("Tip: Use '0.0.0.0' to listen on all IPv4 addresses, or '::' for all IPv6 addresses.");
+        ui.label(
+            "Tip: Use '0.0.0.0' to listen on all IPv4 addresses, or '::' for all IPv6 addresses.",
+        );
         ui.label("   Default '127.0.0.1' only accepts connections from localhost.");
 
         ui.add_space(16.0);
 
         ui.horizontal(|ui| {
-            if ui.button(if self.server.is_some() { "Restart Server" } else { "Start Server" }).clicked() {
+            if ui
+                .button(if self.server.is_some() {
+                    "Restart Server"
+                } else {
+                    "Start Server"
+                })
+                .clicked()
+            {
                 self.start_services();
             }
 
@@ -412,7 +454,10 @@ impl NowPlayingApp {
             if let Some(server) = &self.server {
                 let port = server.read().port;
                 ui.label(format!("Widget:      http://127.0.0.1:{}/", port));
-                ui.label(format!("JSON API:    http://127.0.0.1:{}/now-playing", port));
+                ui.label(format!(
+                    "JSON API:    http://127.0.0.1:{}/now-playing",
+                    port
+                ));
                 ui.label(format!("SSE Stream:  http://127.0.0.1:{}/events", port));
                 ui.label(format!("Health:      http://127.0.0.1:{}/health", port));
             }
@@ -436,7 +481,11 @@ impl NowPlayingApp {
                 ui.end_row();
 
                 ui.label("Port:");
-                ui.add(egui::DragValue::new(&mut self.config.obs.port).speed(1).range(1024..=65535));
+                ui.add(
+                    egui::DragValue::new(&mut self.config.obs.port)
+                        .speed(1)
+                        .range(1024..=65535),
+                );
                 ui.end_row();
 
                 ui.label("Password:");
@@ -461,7 +510,8 @@ impl NowPlayingApp {
                 self.connect_obs();
             }
 
-            let create_btn = ui.add_enabled(obs_connected, egui::Button::new("Create Scene & Source"));
+            let create_btn =
+                ui.add_enabled(obs_connected, egui::Button::new("Create Scene & Source"));
             if create_btn.clicked() {
                 self.create_obs_scene();
             }
@@ -486,11 +536,19 @@ impl NowPlayingApp {
             .striped(true)
             .show(ui, |ui| {
                 ui.label("Width:");
-                ui.add(egui::DragValue::new(&mut self.config.widget.width).speed(1).range(100..=3840));
+                ui.add(
+                    egui::DragValue::new(&mut self.config.widget.width)
+                        .speed(1)
+                        .range(100..=3840),
+                );
                 ui.end_row();
 
                 ui.label("Height:");
-                ui.add(egui::DragValue::new(&mut self.config.widget.height).speed(1).range(100..=2160));
+                ui.add(
+                    egui::DragValue::new(&mut self.config.widget.height)
+                        .speed(1)
+                        .range(100..=2160),
+                );
                 ui.end_row();
             });
 
@@ -498,18 +556,32 @@ impl NowPlayingApp {
 
         ui.label("Template Mode:");
         ui.horizontal(|ui| {
-            ui.radio_value(&mut self.config.widget.template_mode, TemplateMode::Default, "Default");
-            ui.radio_value(&mut self.config.widget.template_mode, TemplateMode::Custom, "Custom");
+            ui.radio_value(
+                &mut self.config.widget.template_mode,
+                TemplateMode::Default,
+                "Default",
+            );
+            ui.radio_value(
+                &mut self.config.widget.template_mode,
+                TemplateMode::Custom,
+                "Custom",
+            );
         });
         ui.add_space(8.0);
 
         if self.config.widget.template_mode == TemplateMode::Custom {
             ui.label("Custom Template Path:");
-            let custom_path = self.config.widget.custom_template_path.clone().unwrap_or_default();
+            let custom_path = self
+                .config
+                .widget
+                .custom_template_path
+                .clone()
+                .unwrap_or_default();
             ui.horizontal(|ui| {
                 ui.label(&custom_path);
                 if ui.button("Select File...").clicked() {
-                    if let Some(path) = FileDialog::new().add_filter("HTML", &["html"]).pick_file() {
+                    if let Some(path) = FileDialog::new().add_filter("HTML", &["html"]).pick_file()
+                    {
                         self.config.widget.custom_template_path = Some(path.display().to_string());
                     }
                 }
@@ -521,5 +593,4 @@ impl NowPlayingApp {
         ui.add_space(4.0);
         // Template editing removed from UI
     }
-
 }

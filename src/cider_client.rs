@@ -1,14 +1,14 @@
 // Cider music player client using Socket.IO
-use crate::rt::RUNTIME;
 use crate::music_service::TrackInfo;
+use crate::rt::RUNTIME;
 use parking_lot::RwLock;
-use serde::{Deserialize};
+use rust_socketio::{ClientBuilder, Payload, RawClient};
+use serde::Deserialize;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
-use rust_socketio::{Payload, ClientBuilder, RawClient};
-use std::time::Duration;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -103,7 +103,11 @@ impl CiderMonitor {
         let on_playback = move |payload: Payload, _socket: RawClient| {
             if let Payload::Text(json_values) = payload {
                 if let Some(json_str) = json_values.first() {
-                    Self::handle_playback_event(json_str.as_str().unwrap_or(""), &sender_clone, &current_track_clone);
+                    Self::handle_playback_event(
+                        json_str.as_str().unwrap_or(""),
+                        &sender_clone,
+                        &current_track_clone,
+                    );
                 }
             }
         };
@@ -153,7 +157,8 @@ impl CiderMonitor {
                             track.title = data.name.unwrap_or_default();
                             track.artist = data.artist_name.unwrap_or_default();
                             track.album = data.album_name.unwrap_or_default();
-                            track.duration_seconds = (data.duration_in_millis.unwrap_or(0.0) / 1000.0) as u32;
+                            track.duration_seconds =
+                                (data.duration_in_millis.unwrap_or(0.0) / 1000.0) as u32;
 
                             // Handle artwork
                             if let Some(artwork) = data.artwork {
@@ -178,7 +183,8 @@ impl CiderMonitor {
                     "playbackStatus.playbackTimeDidChange" => {
                         if let Ok(data) = serde_json::from_value::<CiderPlaybackTime>(event.data) {
                             let mut track = current_track.write();
-                            track.position_seconds = data.current_playback_time.unwrap_or(0.0) as u32;
+                            track.position_seconds =
+                                data.current_playback_time.unwrap_or(0.0) as u32;
                             if let Some(duration) = data.current_playback_duration {
                                 track.duration_seconds = duration as u32;
                             }
@@ -200,7 +206,8 @@ impl CiderMonitor {
                                 track.title = attributes.name.unwrap_or_default();
                                 track.artist = attributes.artist_name.unwrap_or_default();
                                 track.album = attributes.album_name.unwrap_or_default();
-                                track.duration_seconds = (attributes.duration_in_millis.unwrap_or(0.0) / 1000.0) as u32;
+                                track.duration_seconds =
+                                    (attributes.duration_in_millis.unwrap_or(0.0) / 1000.0) as u32;
 
                                 if let Some(artwork) = attributes.artwork {
                                     if let Some(url) = artwork.url {

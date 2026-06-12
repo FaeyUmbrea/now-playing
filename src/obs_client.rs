@@ -1,7 +1,7 @@
 // OBS WebSocket client integration
 
 use obws::Client;
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 
 pub struct ObsClient {
     client: Option<Client>,
@@ -26,7 +26,10 @@ impl ObsClient {
             return Err(msg);
         }
 
-        info!("Connecting to OBS WebSocket at {}:{}", self.config.host, self.config.port);
+        info!(
+            "Connecting to OBS WebSocket at {}:{}",
+            self.config.host, self.config.port
+        );
 
         let password = if self.config.password.is_empty() {
             None
@@ -63,7 +66,10 @@ impl ObsClient {
 
         // Check if scene exists
         let scenes = client.scenes().list().await.map_err(|e| e.to_string())?;
-        let scene_exists = scenes.scenes.iter().any(|s| s.id.name == *self.config.scene_name);
+        let scene_exists = scenes
+            .scenes
+            .iter()
+            .any(|s| s.id.name == *self.config.scene_name);
 
         if !scene_exists {
             warn!("Scene '{}' does not exist", self.config.scene_name);
@@ -80,16 +86,27 @@ impl ObsClient {
             .await
             .map_err(|e| e.to_string())?;
 
-        let source_item = items.iter().find(|item| item.source_name == self.config.source_name);
+        let source_item = items
+            .iter()
+            .find(|item| item.source_name == self.config.source_name);
 
         if let Some(_item) = source_item {
-            info!("Source '{}' exists in scene, updating...", self.config.source_name);
+            info!(
+                "Source '{}' exists in scene, updating...",
+                self.config.source_name
+            );
 
             // Update source settings
             let mut settings = serde_json::Map::new();
-            settings.insert("url".to_string(), serde_json::Value::String(url.to_string()));
+            settings.insert(
+                "url".to_string(),
+                serde_json::Value::String(url.to_string()),
+            );
             settings.insert("width".to_string(), serde_json::Value::Number(width.into()));
-            settings.insert("height".to_string(), serde_json::Value::Number(height.into()));
+            settings.insert(
+                "height".to_string(),
+                serde_json::Value::Number(height.into()),
+            );
 
             use obws::requests::inputs::{InputId, SetSettings};
             client
@@ -128,7 +145,10 @@ impl ObsClient {
             return Err("Scene name and source name must be different".to_string());
         }
 
-        info!("Creating scene '{}' and source '{}'", scene_name, source_name);
+        info!(
+            "Creating scene '{}' and source '{}'",
+            scene_name, source_name
+        );
 
         // Check if scene exists, create if not
         let scenes = client.scenes().list().await.map_err(|e| e.to_string())?;
@@ -146,15 +166,28 @@ impl ObsClient {
         }
 
         // Check if source exists globally (not just in the scene)
-        let all_inputs = client.inputs().list(None).await.map_err(|e| e.to_string())?;
+        let all_inputs = client
+            .inputs()
+            .list(None)
+            .await
+            .map_err(|e| e.to_string())?;
         let global_source_exists = all_inputs.iter().any(|input| input.id.name == source_name);
 
         if global_source_exists {
-            info!("Source '{}' already exists globally, updating settings", source_name);
+            info!(
+                "Source '{}' already exists globally, updating settings",
+                source_name
+            );
             let mut settings = serde_json::Map::new();
-            settings.insert("url".to_string(), serde_json::Value::String(url.to_string()));
+            settings.insert(
+                "url".to_string(),
+                serde_json::Value::String(url.to_string()),
+            );
             settings.insert("width".to_string(), serde_json::Value::Number(width.into()));
-            settings.insert("height".to_string(), serde_json::Value::Number(height.into()));
+            settings.insert(
+                "height".to_string(),
+                serde_json::Value::Number(height.into()),
+            );
 
             use obws::requests::inputs::{InputId, SetSettings};
             client
@@ -188,9 +221,15 @@ impl ObsClient {
         // Create browser source if it does not exist anywhere
         info!("Creating browser source '{}'", source_name);
         let mut settings = serde_json::Map::new();
-        settings.insert("url".to_string(), serde_json::Value::String(url.to_string()));
+        settings.insert(
+            "url".to_string(),
+            serde_json::Value::String(url.to_string()),
+        );
         settings.insert("width".to_string(), serde_json::Value::Number(width.into()));
-        settings.insert("height".to_string(), serde_json::Value::Number(height.into()));
+        settings.insert(
+            "height".to_string(),
+            serde_json::Value::Number(height.into()),
+        );
         settings.insert("shutdown".to_string(), serde_json::Value::Bool(false));
 
         use obws::requests::inputs::Create;

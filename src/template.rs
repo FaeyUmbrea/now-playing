@@ -1,8 +1,8 @@
 // filepath: src/template.rs
 // HTML Template engine with live data replacement
 
-use std::fs;
 use crate::config::{load_default_template, TemplateMode, WidgetConfig};
+use std::fs;
 
 pub struct TemplateEngine {}
 
@@ -53,7 +53,10 @@ impl TemplateEngine {
                         Ok(contents) => Ok(contents),
                         Err(e) => {
                             let _fallback = load_default_template();
-                            Err(format!("Failed to load custom template '{}': {}. Falling back to default.", path, e))
+                            Err(format!(
+                                "Failed to load custom template '{}': {}. Falling back to default.",
+                                path, e
+                            ))
                         }
                     }
                 } else {
@@ -70,4 +73,3 @@ impl TemplateEngine {
         Ok(wrapper.replace("{{TEMPLATE}}", &widget_template))
     }
 }
-

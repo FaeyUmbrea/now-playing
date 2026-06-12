@@ -38,9 +38,12 @@ impl Default for AppleMusicMonitor {
 impl AppleMusicMonitor {
     pub fn new() -> Self {
         let (sender, receiver) = watch::channel(TrackInfo::default());
-        Self { sender, receiver, handle: Arc::new(RwLock::new(None)) }
+        Self {
+            sender,
+            receiver,
+            handle: Arc::new(RwLock::new(None)),
+        }
     }
-
 
     pub fn start_monitoring(&self) {
         let sender = self.sender.clone();
@@ -139,7 +142,8 @@ fn get_artwork_base64() -> Option<String> {
     let temp_path = temp_dir.join("now_playing_artwork.jpg");
     let temp_path_str = temp_path.to_string_lossy();
 
-    let script = format!(r#"
+    let script = format!(
+        r#"
 tell application "Music"
     if it is running and current track exists then
         try
@@ -161,7 +165,9 @@ tell application "Music"
     end if
     return "no_artwork"
 end tell
-    "#, temp_path_str, temp_path_str);
+    "#,
+        temp_path_str, temp_path_str
+    );
 
     let output = Command::new("/usr/bin/osascript")
         .arg("-e")
@@ -178,7 +184,8 @@ end tell
             let _ = fs::remove_file(&temp_path);
 
             // Encode to base64
-            let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &artwork_data);
+            let encoded =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &artwork_data);
             return Some(format!("data:image/jpeg;base64,{}", encoded));
         }
     }
@@ -198,7 +205,11 @@ fn parse_tab_output(s: &str) -> Result<TrackInfo, String> {
     let album = parts[2].to_string();
     let duration_seconds = parts[3].parse::<u32>().unwrap_or(0);
     let position_seconds = parts[4].parse::<u32>().unwrap_or(0);
-    let is_playing = match parts[5] { "true" => true, "false" => false, other => { other == "playing" } };
+    let is_playing = match parts[5] {
+        "true" => true,
+        "false" => false,
+        other => other == "playing",
+    };
 
     Ok(TrackInfo {
         title,
@@ -207,7 +218,7 @@ fn parse_tab_output(s: &str) -> Result<TrackInfo, String> {
         duration_seconds,
         position_seconds,
         is_playing,
-        artwork_base64: None  // Will be set by get_artwork_base64()
+        artwork_base64: None, // Will be set by get_artwork_base64()
     })
 }
 
