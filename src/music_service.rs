@@ -1,4 +1,5 @@
 // Unified music service abstraction
+#[cfg(target_os = "macos")]
 use crate::rt::RUNTIME;
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
