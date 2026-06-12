@@ -233,4 +233,4 @@ RUST_LOG=info cargo run
 
 ## License
 
-MIT (placeholder; choose appropriate license).
+Licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).
