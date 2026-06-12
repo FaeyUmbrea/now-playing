@@ -145,7 +145,7 @@ fn get_artwork_base64() -> Option<String> {
     let script = format!(
         r#"
 tell application "Music"
-    if it is running and current track exists then
+    if it is running and (exists current track) then
         try
             set t to current track
             if exists (first artwork of t) then
